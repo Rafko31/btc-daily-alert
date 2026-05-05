@@ -1,11 +1,11 @@
 import os
 import requests
-from datetime import datetime, date
+from datetime import date
 
-TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_TOKEN", "VOTRE_TOKEN_BOT_ICI")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "VOTRE_TOKEN_BOT_ICI")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "VOTRE_CHAT_ID_ICI")
 
-ATH_PRICE = 126_000
+ATH_PRICE = 126000
 ATH_DATE = date(2025, 10, 6)
 BOTTOM_WINDOW_START = 270
 BOTTOM_WINDOW_END = 420
@@ -13,7 +13,11 @@ BOTTOM_WINDOW_END = 420
 def fetch_btc():
     r = requests.get(
         "https://api.coingecko.com/api/v3/simple/price",
-        params={"ids": "bitcoin", "vs_currencies": "usd", "include_24hr_change": "true"},
+        params={
+            "ids": "bitcoin",
+            "vs_currencies": "usd",
+            "include_24hr_change": "true"
+        },
         timeout=15
     )
     r.raise_for_status()
@@ -25,8 +29,9 @@ def fetch_btc():
         "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart",
         params={"vs_currency": "usd", "days": "210", "interval": "daily"},
         timeout=15
-    ).json()
-    prices_list = [p[1] for p in hist["prices"]]
+    )
+    hist.raise_for_status()
+    prices_list = [p[1] for p in hist.json()["prices"]]
     ma200 = sum(prices_list[-200:]) / 200 if len(prices_list) >= 200 else None
     return price, change, ma200
 
@@ -44,15 +49,21 @@ def fetch_gold():
         return None
 
 def fg_label(v):
-    if v <= 24: return "Extreme Fear"
-    if v <= 44: return "Fear"
-    if v <= 55: return "Neutral"
-    if v <= 74: return "Greed"
+    if v <= 24:
+        return "Extreme Fear"
+    if v <= 44:
+        return "Fear"
+    if v <= 55:
+        return "Neutral"
+    if v <= 74:
+        return "Greed"
     return "Extreme Greed"
 
 def signal_dot(active):
-    if active is True: return "🟢"
-    if active is False: return "🔴"
+    if active is True:
+        return "🟢"
+    if active is False:
+        return "🔴"
     return "🟡"
 
 def build_message(price, change24, ma200, fg, gold):
@@ -70,19 +81,19 @@ def build_message(price, change24, ma200, fg, gold):
     signals = [
         (sig_fg, f"Fear & Greed < 30 : {fg}/100 ({fg_label(fg)})"),
         (sig_ma200, f"Sous MA200j : {'Oui' if sig_ma200 else 'Non'} (MA200=${ma200:,.0f})" if ma200 else "MA200 indisponible"),
-        (sig_drawdown, f"Drawdown ≥ 55% : -{drawdown:.1f}% depuis ATH"),
-        (sig_timing, f"Fenêtre temporelle : J+{days_since}/365 (~{days_left}j restants)"),
+        (sig_drawdown, f"Drawdown >= 55% : -{drawdown:.1f}% depuis ATH"),
+        (sig_timing, f"Fenetre temporelle : J+{days_since}/365 (~{days_left}j restants)"),
         (sig_gold, f"Or > 2800$ : {'Oui' if sig_gold else 'Non'} ({gold:,.0f}$/oz)" if gold else "Or indisponible"),
     ]
 
     score = sum(1 for s, _ in signals if s is True)
 
     if score <= 1:
-        confluence = "Bear Market actif — observer"
+        confluence = "Bear Market actif - observer"
     elif score <= 3:
-        confluence = "Signaux précoces — surveiller"
+        confluence = "Signaux precoces - surveiller"
     elif score <= 4:
-        confluence = "Confluence modérée — attention"
+        confluence = "Confluence moderee - attention"
     else:
         confluence = "FORT SIGNAL DE RETOURNEMENT"
 
@@ -90,13 +101,13 @@ def build_message(price, change24, ma200, fg, gold):
     change_sign = "+" if change24 >= 0 else ""
 
     lines = [
-        f"🔶 BTC Cycle Tracker — {today.strftime('%d/%m/%Y')}",
+        f"BTC Cycle Tracker - {today.strftime('%d/%m/%Y')}",
         "",
-        f"💰 Prix BTC : ${price:,.0f} {change_arrow} {change_sign}{change24:.2f}%",
-        f"📉 Drawdown ATH : -{drawdown:.1f}% (ATH 126k$ oct. 2025)",
-        f"📊 MA 200 jours : ${ma200:,.0f}" if ma200 else "📊 MA 200 jours : —",
+        f"Prix BTC : ${price:,.0f} {change_arrow} {change_sign}{change24:.2f}%",
+        f"Drawdown ATH : -{drawdown:.1f}% (ATH 126k$ oct. 2025)",
+        f"MA 200 jours : ${ma200:,.0f}" if ma200 else "MA 200 jours : -",
         "",
-        "📡 SIGNAUX DE RETOURNEMENT",
+        "SIGNAUX DE RETOURNEMENT",
         "",
     ]
 
@@ -105,13 +116,12 @@ def build_message(price, change24, ma200, fg, gold):
 
     lines += [
         "",
-        f"🎯 Score confluence : {score}/5",
-        f"📌 Statut : {confluence}",
-        f"⏳ Fenêtre bottom historique : ~Oct 2026 (J+{days_since}/365)",
+        f"Score confluence : {score}/5",
+        f"Statut : {confluence}",
+        f"Fenetre bottom historique : ~Oct 2026 (J+{days_since}/365)",
     ]
 
-    return "
-".join(lines)
+    return "\\n".join(lines)
 
 def send_telegram(token, chat_id, text):
     url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -127,9 +137,9 @@ def main():
     msg = build_message(price, change24, ma200, fg, gold)
 
     if TELEGRAM_TOKEN == "VOTRE_TOKEN_BOT_ICI":
-        raise ValueError("TELEGRAM_TOKEN non configuré")
+        raise ValueError("TELEGRAM_TOKEN non configure")
     if TELEGRAM_CHAT_ID == "VOTRE_CHAT_ID_ICI":
-        raise ValueError("TELEGRAM_CHAT_ID non configuré")
+        raise ValueError("TELEGRAM_CHAT_ID non configure")
 
     send_telegram(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, msg)
 
