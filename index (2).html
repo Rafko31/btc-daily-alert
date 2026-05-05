@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>BTC Cycle Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0d0d0d;
+    --card: #161616;
+    --border: #2a2a2a;
+    --text: #e0e0e0;
+    --muted: #888;
+    --green: #00e676;
+    --red: #ff1744;
+    --orange: #ff9100;
+    --yellow: #ffd600;
+    --blue: #448aff;
+    --purple: #ce93d8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; padding: 20px; }
+  h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 0.8rem; margin-bottom: 20px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+  .card-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 6px; }
+  .card-value { font-size: 2rem; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+  .card-sub { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-top: 6px;
+  }
+  .bg-green { background: rgba(0,230,118,.15); color: var(--green); }
+  .bg-red { background: rgba(255,23,68,.15); color: var(--red); }
+  .bg-orange { background: rgba(255,145,0,.15); color: var(--orange); }
+  .bg-yellow { background: rgba(255,214,0,.15); color: var(--yellow); }
+  .bg-blue { background: rgba(68,138,255,.15); color: var(--blue); }
+  .bg-purple { background: rgba(206,147,216,.15); color: var(--purple); }
+
+  /* Fear bar */
+  .fbar-wrap { height: 10px; border-radius: 5px; background: #2a2a2a; margin-top: 8px; }
+  .fbar-fill { height: 100%; border-radius: 5px; transition: width .6s; }
+
+  /* Gauge */
+  .gauge-wrap { position: relative; width: 120px; margin: 0 auto 4px; }
+  .gauge-label { text-align: center; font-size: 1.5rem; font-weight: 700; }
+  .gauge-sub { text-align: center; font-size: 0.72rem; color: var(--muted); }
+
+  /* Cycle grid */
+  .cycle-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; margin-top: 8px; }
+  .cycle-table th { color: var(--muted); text-align: left; padding: 4px 6px; font-weight: 500; }
+  .cycle-table td { padding: 5px 6px; border-top: 1px solid var(--border); }
+  .cycle-table tr.active td { background: rgba(68,138,255,.08); }
+
+  /* Signal list */
+  .signals { list-style: none; margin-top: 8px; }
+  .signals li { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-top: 1px solid var(--border); font-size: 0.82rem; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-right: 8px; }
+  .dot-green { background: var(--green); box-shadow: 0 0 4px var(--green); }
+  .dot-red { background: var(--red); box-shadow: 0 0 4px var(--red); }
+  .dot-orange { background: var(--orange); box-shadow: 0 0 4px var(--orange); }
+  .dot-yellow { background: var(--yellow); }
+  .sig-label { display: flex; align-items: center; gap: 6px; }
+
+  /* Chart area */
+  .chart-card { grid-column: 1 / -1; }
+  .chart-wrap { position: relative; height: 220px; }
+
+  /* Timestamp */
+  .ts { font-size: 0.7rem; color: var(--muted); text-align: right; margin-top: 16px; }
+
+  /* Loading */
+  .loading { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 0.82rem; }
+  .spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .refresh-btn { cursor: pointer; background: none; border: 1px solid var(--border); color: var(--muted); padding: 4px 12px; border-radius: 6px; font-size: 0.75rem; transition: border-color .2s; }
+  .refresh-btn:hover { border-color: var(--blue); color: var(--blue); }
+
+  .header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .score-arc { position: relative; margin: 0 auto; }
+
+  .section-header { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 10px; margin-top: 22px; }
+
+  .countdown { font-size: 0.82rem; color: var(--orange); font-weight: 600; }
+  .error { color: var(--red); font-size: 0.8rem; margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<div class="header-row">
+  <div>
+    <h1>🔶 BTC Cycle Bear Tracker</h1>
+    <div class="subtitle" id="ts">Chargement des données...</div>
+  </div>
+  <button class="refresh-btn" onclick="loadAll()">↻ Actualiser</button>
+</div>
+
+<!-- Row 1: Main metrics -->
+<div class="section-header">PRIX & POSITION DU CYCLE</div>
+<div class="grid" id="main-grid">
+  <div class="card">
+    <div class="card-title">Prix Bitcoin (USD)</div>
+    <div class="card-value" id="btc-price"><span class="loading"><span class="spinner"></span>chargement</span></div>
+    <div class="card-sub" id="btc-change">—</div>
+    <div id="btc-badge"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Drawdown depuis ATH</div>
+    <div class="card-value" id="btc-drawdown">—</div>
+    <div class="card-sub">ATH : ~126 000 $ (6 oct. 2025)</div>
+    <div class="fbar-wrap"><div class="fbar-fill" id="drawdown-bar" style="width:0%;background:var(--red)"></div></div>
+    <div class="card-sub" style="margin-top:6px" id="drawdown-info">—</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Moyenne mobile 200 jours</div>
+    <div class="card-value" id="ma200">—</div>
+    <div class="card-sub" id="ma200-dist">—</div>
+    <div id="ma200-badge"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Jours depuis ATH → Countdown</div>
+    <div class="card-value" id="days-since-ath">—</div>
+    <div class="card-sub">ATH : 6 octobre 2025</div>
+    <div class="countdown" id="bottom-window">⏳ Bottom historique : Oct 2026</div>
+  </div>
+</div>
+
+<!-- Row 2: Fear & Greed + Gold + Oil + Fed -->
+<div class="section-header">SIGNAUX MACRO & SENTIMENTS</div>
+<div class="grid">
+  <div class="card" style="grid-column: span 2">
+    <div class="card-title">Fear & Greed Index — Crypto</div>
+    <div style="display:flex; align-items:center; gap: 24px; margin-top: 8px;">
+      <div>
+        <div class="card-value" id="fg-value">—</div>
+        <div class="badge" id="fg-badge">—</div>
+      </div>
+      <div style="flex:1">
+        <div class="fbar-wrap" style="height:16px; border-radius:8px; background: linear-gradient(90deg,#ff1744,#ff9100,#ffd600,#00e676)">
+          <div style="position:relative">
+            <div id="fg-cursor" style="position:absolute;top:-5px;width:3px;height:26px;background:white;border-radius:2px;transition:left .6s;left:0%"></div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--muted);margin-top:4px">
+          <span>Extreme Fear (0)</span><span>Neutral (50)</span><span>Extreme Greed (100)</span>
+        </div>
+        <div class="card-sub" style="margin-top:8px" id="fg-signal">—</div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Prix de l'Or (USD/oz)</div>
+    <div class="card-value" id="gold-price">—</div>
+    <div class="card-sub" id="gold-change">—</div>
+    <div id="gold-badge"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Prix du Pétrole WTI (USD/b)</div>
+    <div class="card-value" id="oil-price">—</div>
+    <div class="card-sub" id="oil-change">—</div>
+    <div id="oil-badge"></div>
+  </div>
+</div>
+
+<!-- Row 3: Signals -->
+<div class="section-header">GRILLE DE RETOURNEMENT DE CYCLE</div>
+<div class="grid">
+  <div class="card" style="grid-column: span 2">
+    <div class="card-title">Checklist des signaux de bottom</div>
+    <ul class="signals" id="signals-list">
+      <li><span class="sig-label"><span class="dot dot-orange"></span>Chargement...</span></li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="card-title">Score de Confluence</div>
+    <div class="gauge-label" id="confluence-score">—</div>
+    <div class="gauge-sub">/ 7 signaux actifs</div>
+    <div id="confluence-badge" style="margin-top:8px"></div>
+    <div class="card-sub" style="margin-top:8px" id="confluence-interp">—</div>
+  </div>
+</div>
+
+<!-- Cycle reference table -->
+<div class="section-header">RÉFÉRENCE HISTORIQUE DES CYCLES</div>
+<div class="grid">
+  <div class="card chart-card">
+    <div class="card-title">Cycles Baissiers BTC — Données historiques</div>
+    <table class="cycle-table">
+      <thead><tr>
+        <th>Cycle</th><th>ATH</th><th>Bottom</th><th>Drawdown</th><th>Durée</th><th>Multiple suivant</th>
+      </tr></thead>
+      <tbody>
+        <tr><td>2013→2015</td><td>1 240 $</td><td>152 $</td><td>-87%</td><td>406 j</td><td>~120x</td></tr>
+        <tr><td>2017→2018</td><td>19 800 $</td><td>3 200 $</td><td>-84%</td><td>364 j</td><td>~22x</td></tr>
+        <tr><td>2021→2022</td><td>69 000 $</td><td>15 476 $</td><td>-77%</td><td>376 j</td><td>~8x</td></tr>
+        <tr class="active" id="current-cycle-row"><td>2025→2026 ⬅️</td><td>126 000 $</td><td id="tbl-current-low">?</td><td id="tbl-drawdown">?</td><td id="tbl-duration">?</td><td>~3–6x (proj.)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Price chart -->
+<div class="section-header">PRIX BTC — DERNIERS 30 JOURS</div>
+<div class="grid">
+  <div class="card chart-card">
+    <div class="chart-wrap">
+      <canvas id="priceChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="ts" id="last-update">—</div>
+
+<script>
+const ATH = 126000;
+const ATH_DATE = new Date('2025-10-06');
+const MA200_APPROX_WEEKLY = 57000; // 200-week MA approximation
+
+let priceChart = null;
+
+function fmtNum(n, decimals=0) {
+  return n == null ? '—' : Number(n).toLocaleString('fr-FR', {minimumFractionDigits:decimals, maximumFractionDigits:decimals});
+}
+
+function fmtUSD(n) { return n == null ? '—' : '$' + fmtNum(n); }
+
+function daysSince(date) {
+  return Math.floor((new Date() - date) / 86400000);
+}
+
+function fgColor(v) {
+  if (v <= 24) return '#ff1744';
+  if (v <= 44) return '#ff9100';
+  if (v <= 55) return '#ffd600';
+  if (v <= 74) return '#00e676';
+  return '#00c853';
+}
+
+function fgLabel(v) {
+  if (v <= 24) return { label: 'Extreme Fear 😱', cls: 'bg-red' };
+  if (v <= 44) return { label: 'Fear 😨', cls: 'bg-orange' };
+  if (v <= 55) return { label: 'Neutral 😐', cls: 'bg-yellow' };
+  if (v <= 74) return { label: 'Greed 😏', cls: 'bg-green' };
+  return { label: 'Extreme Greed 🤑', cls: 'bg-green' };
+}
+
+// --- Fetch Fear & Greed (alternative.me free API, CORS ok) ---
+async function fetchFearGreed() {
+  const res = await fetch('https://api.alternative.me/fng/?limit=1&format=json');
+  const d = await res.json();
+  return parseInt(d.data[0].value);
+}
+
+// --- Fetch BTC price + 30-day history via CoinGecko free API ---
+async function fetchBTC() {
+  const [cur, hist] = await Promise.all([
+    fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true').then(r=>r.json()),
+    fetch('https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=90&interval=daily').then(r=>r.json())
+  ]);
+  const price = cur.bitcoin.usd;
+  const change24 = cur.bitcoin.usd_24h_change;
+  const prices = hist.prices; // [[ts, price], ...]
+  return { price, change24, prices };
+}
+
+// --- Fetch Gold price via frankfurter (XAU) ---
+async function fetchGold() {
+  try {
+    const res = await fetch('https://api.frankfurter.app/latest?from=XAU&to=USD');
+    const d = await res.json();
+    return d.rates.USD;
+  } catch(e) {
+    // fallback: metals API
+    return null;
+  }
+}
+
+// --- Compute 200-day MA from price history ---
+function compute200DayMA(prices) {
+  if (!prices || prices.length < 200) return null;
+  const last200 = prices.slice(-200).map(p => p[1]);
+  return last200.reduce((a,b) => a+b, 0) / 200;
+}
+
+// --- Build signals checklist ---
+function buildSignals(btcPrice, fg, ma200, daysSinceATH, goldPrice, oilPrice) {
+  const drawdownPct = ((ATH - btcPrice) / ATH) * 100;
+  const signals = [
+    {
+      label: 'Fear & Greed < 25 pendant 30+ j',
+      desc: `Actuel : ${fg ?? '?'}/100`,
+      active: fg != null && fg < 30,
+      color: fg != null && fg < 30 ? 'dot-green' : 'dot-orange',
+    },
+    {
+      label: 'BTC sous la MA 200 jours',
+      desc: `MA200 : ${ma200 ? fmtUSD(Math.round(ma200)) : '—'} | Prix : ${fmtUSD(Math.round(btcPrice))}`,
+      active: ma200 != null && btcPrice < ma200,
+      color: ma200 && btcPrice < ma200 ? 'dot-green' : 'dot-red',
+    },
+    {
+      label: 'Drawdown ≥ 60% depuis ATH',
+      desc: `Actuel : -${drawdownPct.toFixed(1)}% (seuil : -60%)`,
+      active: drawdownPct >= 55,
+      color: drawdownPct >= 55 ? 'dot-green' : 'dot-red',
+    },
+    {
+      label: 'Fenêtre temporelle historique (Aug–Nov 2026)',
+      desc: `${daysSinceATH} jours depuis ATH | Fenêtre : 300–410 j`,
+      active: daysSinceATH >= 270 && daysSinceATH <= 420,
+      color: daysSinceATH >= 270 && daysSinceATH <= 420 ? 'dot-green' : (daysSinceATH > 420 ? 'dot-orange' : 'dot-red'),
+    },
+    {
+      label: 'Or proche de pic historique (signal inflationniste)',
+      desc: goldPrice ? `Or : ${fmtUSD(Math.round(goldPrice))} | Seuil : >2 800 $` : 'Donnée indisponible',
+      active: goldPrice != null && goldPrice > 2800,
+      color: goldPrice && goldPrice > 2800 ? 'dot-orange' : 'dot-yellow',
+    },
+    {
+      label: 'Pétrole WTI < 80$/b (pression inflationniste réduite)',
+      desc: oilPrice ? `WTI : ${fmtUSD(Math.round(oilPrice))}/b | Seuil : <80$` : 'Donnée indisponible',
+      active: oilPrice != null && oilPrice < 80,
+      color: oilPrice && oilPrice < 80 ? 'dot-green' : 'dot-red',
+    },
+    {
+      label: 'Corrélation BTC/Or décorrélée (signal de bottom)',
+      desc: 'Signal qualitatif — vérifier sur TradingView',
+      active: null,
+      color: 'dot-yellow',
+    },
+  ];
+  return signals;
+}
+
+function renderSignals(signals) {
+  const ul = document.getElementById('signals-list');
+  ul.innerHTML = '';
+  let score = 0;
+  signals.forEach(s => {
+    if (s.active === true) score++;
+    const li = document.createElement('li');
+    const statusText = s.active === true ? '✅ Actif' : s.active === false ? '⏳ En attente' : '👁 Manuel';
+    li.innerHTML = `
+      <span class="sig-label">
+        <span class="dot ${s.color}"></span>
+        <span>${s.label}</span>
+      </span>
+      <span style="font-size:0.72rem;color:var(--muted);text-align:right;max-width:180px">${s.desc}</span>
+    `;
+    ul.appendChild(li);
+  });
+  return score;
+}
+
+function renderConfluence(score) {
+  document.getElementById('confluence-score').textContent = score;
+  const badge = document.getElementById('confluence-badge');
+  const interp = document.getElementById('confluence-interp');
+  if (score <= 1) {
+    badge.innerHTML = '<span class="badge bg-red">Bear Market actif</span>';
+    interp.textContent = 'Pas de signal de retournement imminent. Observer.';
+  } else if (score <= 3) {
+    badge.innerHTML = '<span class="badge bg-orange">Signaux précoces</span>';
+    interp.textContent = 'Quelques conditions remplies. Surveiller de près.';
+  } else if (score <= 5) {
+    badge.innerHTML = '<span class="badge bg-yellow">Confluence modérée</span>';
+    interp.textContent = 'Accumulation prudente possible. Pas de confirmation totale.';
+  } else {
+    badge.innerHTML = '<span class="badge bg-green">Fort signal de retournement</span>';
+    interp.textContent = '⚡ Confluence élevée — Zone de bottom potentielle identifiée.';
+  }
+}
+
+function drawPriceChart(prices, ma200Value) {
+  const canvas = document.getElementById('priceChart');
+  const ctx = canvas.getContext('2d');
+
+  // Last 60 days
+  const slice = prices.slice(-60);
+  const labels = slice.map(p => {
+    const d = new Date(p[0]);
+    return d.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit' });
+  });
+  const data = slice.map(p => p[1]);
+
+  if (priceChart) priceChart.destroy();
+
+  priceChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'BTC (USD)',
+          data,
+          borderColor: '#ff9100',
+          backgroundColor: 'rgba(255,145,0,0.08)',
+          tension: 0.3,
+          pointRadius: 0,
+          borderWidth: 2,
+          fill: true,
+        },
+        ma200Value ? {
+          label: 'MA 200 jours',
+          data: new Array(labels.length).fill(ma200Value),
+          borderColor: '#448aff',
+          borderDash: [5,3],
+          borderWidth: 1.5,
+          pointRadius: 0,
+          fill: false,
+        } : null,
+        {
+          label: 'ATH 126k$',
+          data: new Array(labels.length).fill(ATH),
+          borderColor: '#ff1744',
+          borderDash: [3,4],
+          borderWidth: 1,
+          pointRadius: 0,
+          fill: false,
+        }
+      ].filter(Boolean),
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 600 },
+      plugins: {
+        legend: {
+          labels: { color: '#888', font: { size: 11 } }
+        },
+        tooltip: {
+          mode: 'index', intersect: false,
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: $${Math.round(ctx.raw).toLocaleString('fr-FR')}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#666', maxTicksLimit: 10, font: { size: 10 } },
+          grid: { color: '#1e1e1e' }
+        },
+        y: {
+          ticks: {
+            color: '#666',
+            font: { size: 10 },
+            callback: v => '$' + Math.round(v/1000) + 'k'
+          },
+          grid: { color: '#1e1e1e' }
+        }
+      }
+    }
+  });
+}
+
+async function loadAll() {
+  document.getElementById('ts').textContent = 'Actualisation en cours...';
+
+  try {
+    const [fg, btcData, goldPrice] = await Promise.allSettled([
+      fetchFearGreed(),
+      fetchBTC(),
+      fetchGold(),
+    ]);
+
+    const fgVal = fg.status === 'fulfilled' ? fg.value : null;
+    const btc = btcData.status === 'fulfilled' ? btcData.value : null;
+    const gold = goldPrice.status === 'fulfilled' ? goldPrice.value : null;
+    const oilPrice = null; // Oil requires auth'd API — shown as manual
+
+    if (!btc) throw new Error("Impossible de récupérer les données BTC");
+
+    const { price, change24, prices } = btc;
+    const ma200 = compute200DayMA(prices);
+    const drawdown = ((ATH - price) / ATH) * 100;
+    const days = daysSince(ATH_DATE);
+    const daysToTarget = Math.max(0, 365 - days);
+
+    // --- BTC Price ---
+    document.getElementById('btc-price').textContent = fmtUSD(Math.round(price));
+    const changeSign = change24 >= 0 ? '+' : '';
+    document.getElementById('btc-change').textContent = `24h : ${changeSign}${change24?.toFixed(2)}%`;
+    document.getElementById('btc-badge').innerHTML = `<span class="badge ${change24 >= 0 ? 'bg-green' : 'bg-red'}">${change24 >= 0 ? '▲' : '▼'} ${changeSign}${change24?.toFixed(2)}%</span>`;
+
+    // --- Drawdown ---
+    document.getElementById('btc-drawdown').textContent = `-${drawdown.toFixed(1)}%`;
+    document.getElementById('drawdown-bar').style.width = `${Math.min(drawdown, 100)}%`;
+    let ddScenario = drawdown < 50 ? 'Scénario optimiste (-50%)' : drawdown < 65 ? 'Scénario base (-60 à -65%)' : drawdown < 75 ? 'Scénario bear (-70%)' : 'Scénario extrême (>-75%)';
+    document.getElementById('drawdown-info').textContent = ddScenario;
+
+    // --- MA200 ---
+    if (ma200) {
+      document.getElementById('ma200').textContent = fmtUSD(Math.round(ma200));
+      const dist = ((price - ma200) / ma200 * 100);
+      document.getElementById('ma200-dist').textContent = `Prix ${dist >= 0 ? '+' : ''}${dist.toFixed(1)}% ${dist >= 0 ? 'au-dessus' : 'en-dessous'} de la MA200`;
+      document.getElementById('ma200-badge').innerHTML = `<span class="badge ${dist < 0 ? 'bg-red' : dist < 15 ? 'bg-yellow' : 'bg-green'}">${dist < 0 ? '⚠️ Sous la MA200 — Zone critique' : dist < 15 ? '📍 Proche MA200' : '📈 Au-dessus MA200'}</span>`;
+    }
+
+    // --- Days since ATH ---
+    document.getElementById('days-since-ath').textContent = `J+${days}`;
+    document.getElementById('tbl-duration').textContent = `${days} j en cours`;
+    if (daysToTarget > 0) {
+      document.getElementById('bottom-window').textContent = `⏳ Fenêtre bottom dans ~${daysToTarget} jours (Oct 2026)`;
+    } else {
+      document.getElementById('bottom-window').textContent = `🎯 Dans la fenêtre historique du bottom !`;
+      document.getElementById('bottom-window').style.color = 'var(--green)';
+    }
+
+    // --- Table ---
+    document.getElementById('tbl-current-low').textContent = fmtUSD(Math.round(price));
+    document.getElementById('tbl-drawdown').textContent = `-${drawdown.toFixed(0)}%`;
+
+    // --- Fear & Greed ---
+    if (fgVal != null) {
+      document.getElementById('fg-value').textContent = fgVal;
+      document.getElementById('fg-value').style.color = fgColor(fgVal);
+      const { label, cls } = fgLabel(fgVal);
+      document.getElementById('fg-badge').innerHTML = `<span class="badge ${cls}">${label}</span>`;
+      document.getElementById('fg-cursor').style.left = `${fgVal}%`;
+
+      const fgSignal = fgVal <= 24
+        ? `⚡ Signal fort : Fear extrême < 25. Si maintenu 30 j+, zone d'accumulation historique.`
+        : fgVal <= 44
+        ? `📉 Fear modéré. Marché nerveux, mais pas encore en zone d'accumulation optimale.`
+        : fgVal <= 55
+        ? `😐 Zone neutre. Pas de signal extrême actif.`
+        : `🚨 Greed élevé — Prudence. Zones de distribution historique.`;
+      document.getElementById('fg-signal').textContent = fgSignal;
+    }
+
+    // --- Gold ---
+    if (gold) {
+      document.getElementById('gold-price').textContent = fmtUSD(Math.round(gold));
+      document.getElementById('gold-change').textContent = 'Prix spot XAU/USD';
+      document.getElementById('gold-badge').innerHTML = `<span class="badge ${gold > 2800 ? 'bg-orange' : 'bg-yellow'}">${gold > 2800 ? '⚠️ Or à pic — pression inflationniste' : '✅ Or modéré'}</span>`;
+    } else {
+      document.getElementById('gold-price').textContent = '—';
+      document.getElementById('gold-change').textContent = 'API indisponible — vérifier manuellement';
+    }
+
+    // --- Oil (manual) ---
+    document.getElementById('oil-price').textContent = '—';
+    document.getElementById('oil-change').textContent = 'Vérifier sur TradingView (USOIL)';
+    document.getElementById('oil-badge').innerHTML = '<span class="badge bg-blue">📡 Saisir manuellement ci-dessous</span>';
+
+    // --- Signals ---
+    const signals = buildSignals(price, fgVal, ma200, days, gold, null);
+    const score = renderSignals(signals);
+    renderConfluence(score);
+
+    // --- Chart ---
+    drawPriceChart(prices, ma200);
+
+    // --- Timestamp ---
+    const now = new Date();
+    document.getElementById('ts').textContent = `Mise à jour : ${now.toLocaleDateString('fr-FR')} à ${now.toLocaleTimeString('fr-FR')}`;
+    document.getElementById('last-update').textContent = `Sources : CoinGecko (prix/MA), Alternative.me (F&G), Frankfurter (Or) | Pétole & Corrélation Or/BTC : manuel`;
+
+  } catch(err) {
+    document.getElementById('ts').textContent = `Erreur : ${err.message}`;
+    console.error(err);
+  }
+}
+
+// Auto-refresh toutes les 5 minutes
+loadAll();
+setInterval(loadAll, 300000);
+</script>
+</body>
+</html>
