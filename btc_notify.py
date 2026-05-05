@@ -8,6 +8,8 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 ATH_PRICE = 126000
 ATH_DATE = date(2025, 10, 6)
 
+DASHBOARD_URL = "https://rafko31.github.io/btc-daily-alert/"
+
 def fetch_btc():
     r = requests.get(
         "https://api.coingecko.com/api/v3/simple/price",
@@ -41,12 +43,47 @@ def fg_label(v):
         return "Greed"
     return "Extreme Greed"
 
-def dot(active):
-    if active is True:
-        return "OK"
-    if active is False:
-        return "--"
-    return "??"
+def color_fg(v):
+    if v <= 24:
+        return "🟢"
+    elif v <= 44:
+        return "🟡"
+    elif v <= 60:
+        return "🟠"
+    return "🔴"
+
+def color_ma200(price, ma200):
+    if ma200 is None:
+        return "⚪"
+    diff = (price - ma200) / ma200 * 100
+    if diff < 0:
+        return "🟢"
+    elif diff < 15:
+        return "🟡"
+    return "🔴"
+
+def color_drawdown(dd):
+    if dd >= 60:
+        return "🟢"
+    elif dd >= 45:
+        return "🟡"
+    return "🔴"
+
+def color_timing(days):
+    if 270 <= days <= 420:
+        return "🟢"
+    elif 240 <= days < 270:
+        return "🟡"
+    return "🔴"
+
+def color_score(score):
+    if score >= 4:
+        return "🟢 FORT SIGNAL"
+    elif score == 3:
+        return "🟡 Confluence moderee"
+    elif score == 2:
+        return "🟠 Signaux precoces"
+    return "🔴 Bear actif"
 
 def main():
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
@@ -60,31 +97,40 @@ def main():
     drawdown = (ATH_PRICE - price) / ATH_PRICE * 100
     days_left = max(0, 365 - days)
 
-    s1 = fg < 30
+    s1 = fg <= 24
     s2 = ma200 is not None and price < ma200
     s3 = drawdown >= 55
     s4 = 270 <= days <= 420
     score = sum([s1, s2, s3, s4])
 
     arrow = "+" if change >= 0 else ""
-    ma_txt = str(round(ma200)) if ma200 else "N/A"
+    ma_txt = "$" + str(round(ma200)) if ma200 else "N/A"
+    ma_diff = round((price - ma200) / ma200 * 100, 1) if ma200 else None
+    ma_diff_txt = ("+" + str(ma_diff) + "% au-dessus") if ma_diff and ma_diff >= 0 else (str(ma_diff) + "% en-dessous") if ma_diff else ""
 
     msg = (
-        "BTC Cycle Tracker - " + today.strftime("%d/%m/%Y") + "\n"
+        "==============================\n"
+        "BTC CYCLE TRACKER\n"
+        + today.strftime("%d/%m/%Y") + " - 8h55 Montreal\n"
+        "==============================\n"
         "\n"
-        "Prix : $" + str(round(price)) + " (" + arrow + str(round(change, 2)) + "%)\n"
-        "Drawdown ATH : -" + str(round(drawdown, 1)) + "%\n"
-        "MA 200 jours : $" + ma_txt + "\n"
-        "J+" + str(days) + " depuis ATH\n"
+        "PRIX & POSITION\n"
+        "💰 BTC : $" + str(round(price)) + " (" + arrow + str(round(change, 2)) + "%)\n"
+        "📉 Drawdown : -" + str(round(drawdown, 1)) + "% depuis ATH 126k$\n"
+        "📊 MA 200j : " + ma_txt + " (" + ma_diff_txt + ")\n"
+        "📅 J+" + str(days) + " depuis ATH (bot. hist. ~J+365)\n"
         "\n"
-        "SIGNAUX\n"
-        + dot(s1) + " Fear&Greed < 30 : " + str(fg) + "/100 (" + fg_label(fg) + ")\n"
-        + dot(s2) + " Sous MA200j\n"
-        + dot(s3) + " Drawdown >= 55%\n"
-        + dot(s4) + " Fenetre Oct 2026 (~" + str(days_left) + "j)\n"
+        "SIGNAUX DE RETOURNEMENT\n"
+        + color_fg(fg) + " Fear&Greed : " + str(fg) + "/100 - " + fg_label(fg) + "\n"
+        + color_ma200(price, ma200) + " MA200j : " + ("Prix SOUS la MA - zone critique" if s2 else "Prix au-dessus MA") + "\n"
+        + color_drawdown(drawdown) + " Drawdown : -" + str(round(drawdown, 1)) + "% (seuil signal : -55%)\n"
+        + color_timing(days) + " Timing : J+" + str(days) + " (fenetre Oct 2026 = J+270 a J+420)\n"
         "\n"
-        "Score : " + str(score) + "/4\n"
-        "Bottom historique : ~Oct 2026"
+        "CONFLUENCE\n"
+        + color_score(score) + " - " + str(score) + "/4 signaux actifs\n"
+        "\n"
+        "Dashboard live :\n"
+        + DASHBOARD_URL
     )
 
     requests.post(
