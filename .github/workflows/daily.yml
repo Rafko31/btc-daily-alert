@@ -2,7 +2,7 @@ name: BTC Daily Alert
 
 on:
   schedule:
-    - cron: '0 7 * * *'
+    - cron: '55 12 * * *'
   workflow_dispatch:
 
 jobs:
